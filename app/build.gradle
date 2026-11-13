@@ -1,0 +1,56 @@
+plugins {
+    id "com.android.application"
+}
+
+// 自動更新の確認先（GitHub の「所有者/リポジトリ名」）。未指定なら自動更新は無効。
+// 例: gradlew assembleRelease -PupdateRepo=example-org/portalkiosk
+def updateRepo = (project.findProperty("updateRepo") ?: "").toString()
+// 更新は versionCode が大きいときだけ行う。リリースのビルドでは増やした値を渡す。
+def kioskVersionCode = Integer.parseInt((project.findProperty("kioskVersionCode") ?: "1").toString())
+def kioskVersionName = (project.findProperty("kioskVersionName") ?: "1.0").toString()
+
+// リリース署名の鍵は、リポジトリに入れず、環境変数で渡す（GitHub Actions では Secrets）。
+def keystoreFile = System.getenv("KIOSK_KEYSTORE_FILE")
+
+android {
+    namespace "jp.siztec.portalkiosk"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "jp.siztec.portalkiosk"
+        minSdk 26
+        targetSdk 35
+        versionCode kioskVersionCode
+        versionName kioskVersionName
+        buildConfigField "String", "UPDATE_REPO", "\"${updateRepo}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreFile) {
+                storeFile file(keystoreFile)
+                storePassword System.getenv("KIOSK_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KIOSK_KEY_ALIAS")
+                keyPassword System.getenv("KIOSK_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keystoreFile) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
