@@ -77,26 +77,31 @@ public class MainActivity extends Activity {
                 return;
             }
             p.edit().putLong("last_check", now).apply();
-            worker.execute(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        final Updater.Staged staged = Updater.fetch(MainActivity.this);
-                        if (staged != null) {
-                            runOnUiThread(new Runnable() {
-                                @Override
-                                public void run() {
-                                    installWhenIdle(staged);
-                                }
-                            });
-                        }
-                    } catch (Exception e) {
-                        android.util.Log.w("PortalKiosk", "更新の確認に失敗しました: " + e.getClass().getSimpleName());
-                    }
-                }
-            });
+            checkForUpdate();
         }
     };
+
+    /** 更新を確認し、新しい版があれば、操作がないときにインストールする。 */
+    private void checkForUpdate() {
+        worker.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    final Updater.Staged staged = Updater.fetch(MainActivity.this);
+                    if (staged != null) {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                installWhenIdle(staged);
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    android.util.Log.w("PortalKiosk", "更新の確認に失敗しました: " + e.getClass().getSimpleName());
+                }
+            }
+        });
+    }
 
     private void installWhenIdle(final Updater.Staged staged) {
         if (SystemClock.elapsedRealtime() - lastTouchAt < UPDATE_IDLE_MS) {
@@ -148,6 +153,8 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // バーが出たとき、半透明の灰色の帯を付けない
+        getWindow().setNavigationBarContrastEnforced(false);
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.WHITE);
         setContentView(root);
@@ -157,6 +164,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        hideSystemUi();
         if (Config.isConfigured(this)) {
             KioskPolicy.apply(this);
             KioskPolicy.startLock(this);
@@ -187,6 +195,17 @@ public class MainActivity extends Activity {
 
     @SuppressWarnings("deprecation")
     private void hideSystemUi() {
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            // Android 11以降：ステータスバー・ナビゲーションバーを隠す（Android 15で旧方式は効かない）
+            getWindow().setDecorFitsSystemWindows(false);
+            android.view.WindowInsetsController controller = getWindow().getInsetsController();
+            if (controller != null) {
+                controller.hide(android.view.WindowInsets.Type.systemBars());
+                controller.setSystemBarsBehavior(
+                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+            return;
+        }
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
@@ -359,7 +378,8 @@ public class MainActivity extends Activity {
     }
 
     private void showAdminMenu() {
-        final String[] items = {"接続先とPINを設定し直す", "再読み込み", "キオスクを終了（デバイスオーナー解除）"};
+        final String[] items = {"接続先とPINを設定し直す", "再読み込み", "今すぐ更新を確認",
+                "キオスクを終了（デバイスオーナー解除）"};
         new AlertDialog.Builder(this)
                 .setTitle("管理者メニュー")
                 .setItems(items, new android.content.DialogInterface.OnClickListener() {
@@ -372,6 +392,16 @@ public class MainActivity extends Activity {
                             errorShown = false;
                             if (web != null) {
                                 web.loadUrl(Config.url(MainActivity.this));
+                            }
+                        } else if (which == 2) {
+                            if (Updater.isEnabled() && KioskPolicy.isDeviceOwner(MainActivity.this)) {
+                                Toast.makeText(MainActivity.this,
+                                        "更新を確認しています。新しい版があれば、操作がないときに更新します。",
+                                        Toast.LENGTH_LONG).show();
+                                checkForUpdate();
+                            } else {
+                                Toast.makeText(MainActivity.this, "この端末では、自動更新は使えません。",
+                                        Toast.LENGTH_LONG).show();
                             }
                         } else {
                             confirmRelease();
