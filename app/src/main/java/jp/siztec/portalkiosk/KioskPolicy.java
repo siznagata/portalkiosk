@@ -7,6 +7,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.os.UserManager;
 import android.provider.Settings;
 
@@ -59,6 +61,44 @@ final class KioskPolicy {
             dpm.addPersistentPreferredActivity(admin, home, new ComponentName(activity, MainActivity.class));
         } catch (SecurityException ignored) {
             // 端末の制限で設定できない項目があっても、固定表示は続行する
+        }
+    }
+
+    /**
+     * 管理者がWi-Fiを設定するため、端末のWi-Fi設定画面を開く。
+     * 設定アプリとホームボタンを、一時的にだけ許可する。アプリの画面に戻ると、apply() で元に戻る。
+     *
+     * @return 開けたとき true
+     */
+    static boolean openWifiSettings(Activity activity) {
+        Intent intent = new Intent(Settings.ACTION_WIFI_SETTINGS);
+        ResolveInfo resolved = activity.getPackageManager().resolveActivity(intent,
+                PackageManager.MATCH_DEFAULT_ONLY);
+        if (resolved == null) {
+            return false;
+        }
+        if (isDeviceOwner(activity)) {
+            DevicePolicyManager dpm = dpm(activity);
+            ComponentName admin = admin(activity);
+            String settingsPackage = resolved.activityInfo.packageName;
+            try {
+                if ("com.android.settings".equals(settingsPackage)) {
+                    dpm.setLockTaskPackages(admin, new String[] {activity.getPackageName(), settingsPackage});
+                } else {
+                    dpm.setLockTaskPackages(admin,
+                            new String[] {activity.getPackageName(), settingsPackage, "com.android.settings"});
+                }
+                // 設定画面から戻れるように、ホームボタンだけ許可する（ホームはこのアプリ）
+                dpm.setLockTaskFeatures(admin, DevicePolicyManager.LOCK_TASK_FEATURE_HOME);
+            } catch (SecurityException e) {
+                return false;
+            }
+        }
+        try {
+            activity.startActivity(intent);
+            return true;
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 

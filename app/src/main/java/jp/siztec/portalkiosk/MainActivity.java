@@ -406,7 +406,7 @@ public class MainActivity extends Activity {
     }
 
     private void showAdminMenu() {
-        final String[] items = {"接続先とPINを設定し直す", "再読み込み", "今すぐ更新を確認",
+        final String[] items = {"接続先とPINを設定し直す", "再読み込み", "今すぐ更新を確認", "Wi-Fiの設定",
                 "キオスクを終了（デバイスオーナー解除）"};
         new AlertDialog.Builder(this)
                 .setTitle("管理者メニュー")
@@ -429,6 +429,11 @@ public class MainActivity extends Activity {
                                 checkForUpdate();
                             } else {
                                 Toast.makeText(MainActivity.this, "この端末では、自動更新は使えません。",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        } else if (which == 3) {
+                            if (!KioskPolicy.openWifiSettings(MainActivity.this)) {
+                                Toast.makeText(MainActivity.this, "Wi-Fiの設定画面を開けませんでした。",
                                         Toast.LENGTH_LONG).show();
                             }
                         } else {
