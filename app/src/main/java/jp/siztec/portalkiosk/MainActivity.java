@@ -66,6 +66,13 @@ public class MainActivity extends Activity {
     private volatile long lastTouchAt = SystemClock.elapsedRealtime();
     private boolean updateScheduled;
 
+    private final Runnable hideBars = new Runnable() {
+        @Override
+        public void run() {
+            hideSystemUi();
+        }
+    };
+
     /** 更新の確認（6時間に1回まで）。新しい版があれば、操作がないときにインストールする。 */
     private final Runnable updateTick = new Runnable() {
         @Override
@@ -157,6 +164,26 @@ public class MainActivity extends Activity {
         getWindow().setNavigationBarContrastEnforced(false);
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.WHITE);
+        // バーやキーボードが出ても、画面の内容に被せない（内容をバーの内側に収める）。
+        // バーが出たときは、少し待って、もう一度隠す。
+        root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override
+            public android.view.WindowInsets onApplyWindowInsets(View v, android.view.WindowInsets insets) {
+                if (android.os.Build.VERSION.SDK_INT < 30) {
+                    return insets;
+                }
+                int types = android.view.WindowInsets.Type.systemBars()
+                        | android.view.WindowInsets.Type.displayCutout()
+                        | android.view.WindowInsets.Type.ime();
+                android.graphics.Insets bars = insets.getInsets(types);
+                v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                if (insets.isVisible(android.view.WindowInsets.Type.systemBars())) {
+                    handler.removeCallbacks(hideBars);
+                    handler.postDelayed(hideBars, 1000);
+                }
+                return android.view.WindowInsets.CONSUMED;
+            }
+        });
         setContentView(root);
         render();
     }
@@ -176,6 +203,7 @@ public class MainActivity extends Activity {
     protected void onDestroy() {
         handler.removeCallbacks(retry);
         handler.removeCallbacks(updateTick);
+        handler.removeCallbacks(hideBars);
         updateScheduled = false;
         worker.shutdown();
         if (web != null) {
