@@ -45,6 +45,12 @@ public class MainActivity extends Activity {
     private static final int MAX_PIN_FAILURES = 5;
     private static final long LOCKOUT_MS = 60000;
 
+    /** 設定画面・一時解除のまま放置されたとき、アプリの固定表示へ自動で戻すまでの時間。 */
+    private static final long AUTO_RETURN_MS = 3L * 60 * 1000;
+    /** 画面（Activity）が破棄されても残るよう、アプリ全体で1つ持つ。 */
+    private static final Handler APP_HANDLER = new Handler(Looper.getMainLooper());
+    private static Runnable returnTask;
+
     private final Handler handler = new Handler(Looper.getMainLooper());
     private FrameLayout root;
     private WebView web;
@@ -191,11 +197,51 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        cancelAutoReturn();
         hideSystemUi();
         if (Config.isConfigured(this)) {
             KioskPolicy.apply(this);
             KioskPolicy.startLock(this);
             scheduleUpdates();
+        }
+    }
+
+    /** 自動で戻す処理から、すでに前面にいる画面へ届く。固定表示に戻す。 */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        cancelAutoReturn();
+        if (Config.isConfigured(this)) {
+            KioskPolicy.apply(this);
+            KioskPolicy.startLock(this);
+        }
+    }
+
+    /** 設定画面・一時解除のまま放置されたとき、一定時間後にこのアプリの画面へ戻して固定表示にする。 */
+    private void scheduleAutoReturn() {
+        cancelAutoReturn();
+        final android.content.Context app = getApplicationContext();
+        returnTask = new Runnable() {
+            @Override
+            public void run() {
+                returnTask = null;
+                Intent back = new Intent(app, MainActivity.class);
+                back.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                try {
+                    app.startActivity(back);
+                } catch (RuntimeException e) {
+                    android.util.Log.w("PortalKiosk", "自動で戻せませんでした: " + e.getClass().getSimpleName());
+                }
+            }
+        };
+        APP_HANDLER.postDelayed(returnTask, AUTO_RETURN_MS);
+    }
+
+    private static void cancelAutoReturn() {
+        if (returnTask != null) {
+            APP_HANDLER.removeCallbacks(returnTask);
+            returnTask = null;
         }
     }
 
@@ -407,7 +453,7 @@ public class MainActivity extends Activity {
 
     private void showAdminMenu() {
         final String[] items = {"接続先とPINを設定し直す", "再読み込み", "今すぐ更新を確認", "Wi-Fiの設定",
-                "キオスクを終了（デバイスオーナー解除）"};
+                "一時的に解除（このアプリを開くと元に戻る）", "キオスクを終了（デバイスオーナー解除）"};
         new AlertDialog.Builder(this)
                 .setTitle("管理者メニュー")
                 .setItems(items, new android.content.DialogInterface.OnClickListener() {
@@ -432,8 +478,20 @@ public class MainActivity extends Activity {
                                         Toast.LENGTH_LONG).show();
                             }
                         } else if (which == 3) {
-                            if (!KioskPolicy.openWifiSettings(MainActivity.this)) {
+                            if (KioskPolicy.openWifiSettings(MainActivity.this)) {
+                                scheduleAutoReturn();
+                            } else {
                                 Toast.makeText(MainActivity.this, "Wi-Fiの設定画面を開けませんでした。",
+                                        Toast.LENGTH_LONG).show();
+                            }
+                        } else if (which == 4) {
+                            if (KioskPolicy.temporaryUnlock(MainActivity.this)) {
+                                scheduleAutoReturn();
+                                Toast.makeText(MainActivity.this,
+                                        "固定表示を一時的に解除しました。このアプリを開くか、3分たつと元に戻ります。",
+                                        Toast.LENGTH_LONG).show();
+                            } else {
+                                Toast.makeText(MainActivity.this, "この端末では、一時的な解除は使えません。",
                                         Toast.LENGTH_LONG).show();
                             }
                         } else {

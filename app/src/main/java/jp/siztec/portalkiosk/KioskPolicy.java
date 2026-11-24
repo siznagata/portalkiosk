@@ -102,6 +102,28 @@ final class KioskPolicy {
         }
     }
 
+    /**
+     * 固定表示を一時的に解除する（設定の変更などを、端末の通常の操作で行うため）。
+     * 接続先・PIN・デバイスオーナーはそのまま残す。このアプリの画面に戻ると、apply() と startLock() で
+     * 元の固定表示に戻る。戻らないまま放置した場合も、MainActivity が一定時間後に戻す。
+     *
+     * @return 解除できたとき true
+     */
+    static boolean temporaryUnlock(Activity activity) {
+        if (!isDeviceOwner(activity)) {
+            return false;
+        }
+        DevicePolicyManager dpm = dpm(activity);
+        ComponentName admin = admin(activity);
+        try {
+            stopLock(activity);
+            dpm.setStatusBarDisabled(admin, false);
+            return true;
+        } catch (SecurityException e) {
+            return false;
+        }
+    }
+
     /** 固定表示を開始する（デバイスオーナーで許可済みのときだけ有効）。 */
     static void startLock(Activity activity) {
         if (!isDeviceOwner(activity)) {
