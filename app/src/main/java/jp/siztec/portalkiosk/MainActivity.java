@@ -488,7 +488,7 @@ public class MainActivity extends Activity {
                             if (KioskPolicy.temporaryUnlock(MainActivity.this)) {
                                 scheduleAutoReturn();
                                 Toast.makeText(MainActivity.this,
-                                        "固定表示を一時的に解除しました。このアプリを開くか、3分たつと元に戻ります。",
+                                        "固定表示を一時的に解除しました。このアプリのアイコンを開くか、3分たつと元に戻ります。",
                                         Toast.LENGTH_LONG).show();
                             } else {
                                 Toast.makeText(MainActivity.this, "この端末では、一時的な解除は使えません。",

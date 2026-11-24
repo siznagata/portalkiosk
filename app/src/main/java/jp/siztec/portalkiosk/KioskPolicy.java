@@ -55,10 +55,7 @@ final class KioskPolicy {
             dpm.addUserRestriction(admin, UserManager.DISALLOW_ADD_USER);
 
             // ホームボタン・再起動後に、このアプリを標準のホームとして起動する
-            IntentFilter home = new IntentFilter(Intent.ACTION_MAIN);
-            home.addCategory(Intent.CATEGORY_HOME);
-            home.addCategory(Intent.CATEGORY_DEFAULT);
-            dpm.addPersistentPreferredActivity(admin, home, new ComponentName(activity, MainActivity.class));
+            dpm.addPersistentPreferredActivity(admin, homeFilter(), new ComponentName(activity, MainActivity.class));
         } catch (SecurityException ignored) {
             // 端末の制限で設定できない項目があっても、固定表示は続行する
         }
@@ -116,12 +113,45 @@ final class KioskPolicy {
         DevicePolicyManager dpm = dpm(activity);
         ComponentName admin = admin(activity);
         try {
+            // 解除中だけ、既定のホームを端末のホーム（ランチャー）に切り替える。
+            // このアプリを開くと、apply() が既定のホームをこのアプリへ戻す。
+            ComponentName launcher = findLauncher(activity);
+            if (launcher != null) {
+                dpm.addPersistentPreferredActivity(admin, homeFilter(), launcher);
+            }
             stopLock(activity);
             dpm.setStatusBarDisabled(admin, false);
+            if (launcher != null) {
+                Intent home = new Intent(Intent.ACTION_MAIN);
+                home.addCategory(Intent.CATEGORY_HOME);
+                home.setComponent(launcher);
+                home.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                activity.startActivity(home);
+            }
             return true;
-        } catch (SecurityException e) {
+        } catch (RuntimeException e) {
             return false;
         }
+    }
+
+    private static IntentFilter homeFilter() {
+        IntentFilter home = new IntentFilter(Intent.ACTION_MAIN);
+        home.addCategory(Intent.CATEGORY_HOME);
+        home.addCategory(Intent.CATEGORY_DEFAULT);
+        return home;
+    }
+
+    /** このアプリ以外の、端末のホーム（ランチャー）を探す。見つからないときは null。 */
+    private static ComponentName findLauncher(Activity activity) {
+        Intent intent = new Intent(Intent.ACTION_MAIN);
+        intent.addCategory(Intent.CATEGORY_HOME);
+        String self = activity.getPackageName();
+        for (ResolveInfo info : activity.getPackageManager().queryIntentActivities(intent, 0)) {
+            if (!self.equals(info.activityInfo.packageName)) {
+                return new ComponentName(info.activityInfo.packageName, info.activityInfo.name);
+            }
+        }
+        return null;
     }
 
     /** 固定表示を開始する（デバイスオーナーで許可済みのときだけ有効）。 */
